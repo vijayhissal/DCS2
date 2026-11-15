@@ -1,0 +1,104 @@
+Important Exam Note on Java Version: idlj and org.omg.CORBA are built into JDK 8 (Java 1.8) (standard in college DCS labs). If your PC runs JDK 11 or newer, CORBA was removed from the standard JDK, so make sure you test/run this using JDK 8 on the lab PC (or check java -version).
+
+Step 1: Create the IDL File (Hello.idl)
+Defines the language-independent remote interface.
+
+Code snippet
+module HelloApp {
+    interface Hello {
+        string sayHello();
+    };
+};
+Step 2: Generate Stubs & Skeletons using idlj
+Run this command in your terminal inside the folder containing Hello.idl:
+
+PowerShell
+idlj -fall Hello.idl
+(This automatically creates a HelloApp folder containing Hello.java, HelloPOA.java, _HelloStub.java, HelloHelper.java, HelloHolder.java, and HelloOperations.java.)
+
+Step 3: Create the Server (HelloServer.java)
+Implements the generated HelloPOA skeleton and registers the object with the CORBA Naming Service (NameService).
+
+Java
+import HelloApp.*;
+import org.omg.CosNaming.*;
+import org.omg.CORBA.*;
+import org.omg.PortableServer.*;
+
+class HelloImpl extends HelloPOA {
+    public String sayHello() {
+        return "Hello from CORBA Server!";
+    }
+}
+
+public class HelloServer {
+    public static void main(String args[]) {
+        try {
+            // 1. Initialize the ORB
+            ORB orb = ORB.init(args, null);
+
+            // 2. Activate RootPOA and get reference to servant
+            POA rootpoa = POAHelper.narrow(orb.resolve_initial_references("RootPOA"));
+            rootpoa.the_POAManager().activate();
+            HelloImpl helloImpl = new HelloImpl();
+            org.omg.CORBA.Object ref = rootpoa.servant_to_reference(helloImpl);
+            Hello href = HelloHelper.narrow(ref);
+
+            // 3. Bind object reference in Naming Service
+            org.omg.CORBA.Object objRef = orb.resolve_initial_references("NameService");
+            NamingContextExt ncRef = NamingContextExtHelper.narrow(objRef);
+            ncRef.rebind(ncRef.to_name("Hello"), href);
+
+            System.out.println("CORBA Server ready and waiting...");
+            orb.run();
+        } catch (Exception e) {
+            System.out.println(e);
+        }
+    }
+}
+Step 4: Create the Client (HelloClient.java)
+Looks up "Hello" in the CORBA Naming Service and invokes sayHello().
+
+Java
+import HelloApp.*;
+import org.omg.CosNaming.*;
+import org.omg.CORBA.*;
+
+public class HelloClient {
+    public static void main(String args[]) {
+        try {
+            // 1. Initialize the ORB
+            ORB orb = ORB.init(args, null);
+
+            // 2. Get Naming Service reference and resolve "Hello"
+            org.omg.CORBA.Object objRef = orb.resolve_initial_references("NameService");
+            NamingContextExt ncRef = NamingContextExtHelper.narrow(objRef);
+            Hello helloObj = HelloHelper.narrow(ncRef.resolve_str("Hello"));
+
+            // 3. Call remote method
+            System.out.println(helloObj.sayHello());
+        } catch (Exception e) {
+            System.out.println(e);
+        }
+    }
+}
+Step 5: Compile & Run (3 Terminals)
+Open 3 terminals inside your project folder:
+
+Compile all Java files (including the generated HelloApp folder):
+
+PowerShell
+javac *.java HelloApp/*.java
+Terminal 1 — Start the CORBA Object Request Broker Daemon (orbd):
+
+PowerShell
+orbd -ORBInitialPort 1050
+Terminal 2 — Start the CORBA Server:
+
+PowerShell
+java -cp . HelloServer -ORBInitialPort 1050 -ORBInitialHost localhost
+Terminal 3 — Run the CORBA Client:
+
+PowerShell
+java -cp . HelloClient -ORBInitialPort 1050 -ORBInitialHost localhost
+(Output: Hello from CORBA Server!)
